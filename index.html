@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hermes session learning review</title>
+  <style>
+    :root { color-scheme: dark; --bg: #141414; --panel: #1e1e1e; --muted: #aaa; --line: #3b3b3b; --accent: #d3a756; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: #eee; font: 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .shell { max-width: 900px; margin: auto; padding: 28px 18px; }
+    header { border-bottom: 1px solid var(--line); padding-bottom: 18px; }
+    h1 { font-size: 22px; margin: 0 0 7px; }
+    p { color: var(--muted); line-height: 1.5; margin: 0; }
+    .status { padding: 12px; margin: 18px 0; background: #24211a; border-radius: 7px; color: #f3dda0; }
+    .card { display: block; padding: 15px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); margin: 10px 0; }
+    .title { font-weight: 650; font-size: 16px; }
+    .evidence { color: var(--muted); margin-top: 8px; white-space: pre-wrap; }
+    .footer { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 16px 0; margin-top: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    button { border: 1px solid var(--line); border-radius: 7px; padding: 9px 14px; background: #292929; color: #eee; font: inherit; cursor: pointer; }
+    .primary { background: var(--accent); border-color: var(--accent); color: #201600; }
+    .hidden { display: none; }
+    .empty { padding: 45px 0; text-align: center; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <h1>Session learning review</h1>
+      <p>Choose what Hermes should retain. Nothing is changed until you submit.</p>
+    </header>
+    <div id="status" class="status">Loading…</div>
+    <section id="list"></section>
+    <div id="footer" class="footer hidden">
+      <span id="count">0 selected</span>
+      <button class="primary" type="button" onclick="submitSelection()">Apply selected lessons</button>
+    </div>
+  </main>
+  <script>
+    const token = new URLSearchParams(location.search).get("token");
+    const api = (path, options = {}) => fetch(
+      path + (path.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token),
+      { headers: { "Content-Type": "application/json" }, ...options },
+    ).then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) throw Error(data.error || "Request failed");
+      return data;
+    });
+
+    let candidates = [];
+    let loaded = false;
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[char]));
+
+    async function load() {
+      try {
+        const currentStatus = await api("/api/status");
+        document.querySelector("#status").textContent = currentStatus.message || currentStatus.state;
+        if (!loaded && currentStatus.state === "ready") {
+          const data = await api("/api/candidates");
+          candidates = data.candidates || [];
+          document.querySelector("#list").innerHTML = candidates.length
+            ? candidates.map((candidate) => `<label class="card">
+                <input type="checkbox" checked value="${escapeHtml(candidate.id)}" onchange="updateCount()">
+                <div class="title">${escapeHtml(candidate.title || candidate.id)}</div>
+                <div>${escapeHtml(candidate.lesson || "")}</div>
+                <div class="evidence">${escapeHtml(candidate.evidence || "")}</div>
+              </label>`).join("")
+            : '<div class="empty">No reusable lessons were identified.</div>';
+          document.querySelector("#footer").classList.toggle("hidden", !candidates.length);
+          loaded = true;
+          updateCount();
+        }
+        if (["starting", "analyzing", "applying"].includes(currentStatus.state)) setTimeout(load, 1500);
+      } catch (error) {
+        document.querySelector("#status").textContent = error.message;
+      }
+    }
+
+    function updateCount() {
+      const count = document.querySelectorAll('input[type="checkbox"]:checked').length;
+      document.querySelector("#count").textContent = `${count} selected`;
+    }
+
+    async function submitSelection() {
+      const selected = [...document.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value);
+      try {
+        const result = await api("/api/submit", { method: "POST", body: JSON.stringify({ selected }) });
+        document.querySelector("#status").textContent = result.message;
+        document.querySelector("#footer").classList.add("hidden");
+        setTimeout(load, 1500);
+      } catch (error) {
+        document.querySelector("#status").textContent = error.message;
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

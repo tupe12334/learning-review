@@ -1,0 +1,4 @@
+name: learning-review
+version: "1.0.0"
+description: "Starts a token-protected public review page for staged Hermes skill learnings via /learn-review."
+author: "Ofek + Hermes"
